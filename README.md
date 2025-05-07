@@ -9,6 +9,6 @@ Installation and usage instructions can be found under the "SQLServerToolRental"
 
 Thank you for viewing my project!
 
-[Back to main page] (https://simontan98.github.io "Go to Simon's homepage")
+[Back to main page](https://simontan98.github.io "Go to Simon's homepage")
 
 If you have any qustions or wish to contact me, you can email me at simon.tan1098@gmail.com.
