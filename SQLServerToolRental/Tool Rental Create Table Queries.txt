@@ -1,0 +1,184 @@
+CREATE TABLE Customers (
+	customer_id int NOT NULL IDENTITY(1,1),
+	first_name varchar(30) NOT NULL,
+	last_name varchar(30) NOT NULL,
+	phone_number varchar(13) NOT NULL,
+	email varchar(50) NULL,
+	address varchar(100) NOT NULL,
+	postal_code varchar(6) NOT NULL,
+	city varchar(30) NOT NULL,
+	province varchar(20) NOT NULL,
+	country varchar(30) NOT NULL,
+	CONSTRAINT customer_idPK PRIMARY KEY (customer_id)
+);
+
+CREATE TABLE Orders (
+	order_id int NOT NULL IDENTITY(1,1),
+	customer_id int NOT NULL,
+	order_date DATE NOT NULL,
+	return_date DATE NOT NULL,
+	final_price DECIMAL(8,2) NOT NULL,
+	order_status varchar(8) NOT NULL DEFAULT 'Ongoing',
+	CONSTRAINT order_idPK PRIMARY KEY (order_id),
+	CONSTRAINT customer_orderFK FOREIGN KEY (customer_id) REFERENCES Customers(customer_id)
+		ON UPDATE NO ACTION
+		ON DELETE NO ACTION,
+	CONSTRAINT return_date_check CHECK (return_date >= order_date),
+	CONSTRAINT order_date_check CHECK (order_date > '2000-01-01'),
+	CONSTRAINT final_price_check CHECK(final_price >= 0),
+	CONSTRAINT order_status_check CHECK(order_status IN('Ongoing', 'Complete'))
+);
+
+CREATE TABLE Tool_Types (
+	tool_type_id int NOT NULL ,
+	tool_type_name varchar(50) NOT NULL,
+	CONSTRAINT tool_type_idPK PRIMARY KEY (tool_type_id)
+);
+
+CREATE TABLE Tools (
+	tool_id int NOT NULL IDENTITY(1,1),
+	tool_name varchar(30) NOT NULL,
+	tool_description varchar(100) NOT NULL,
+	rental_price DECIMAL(6,2) NOT NULL,
+	stock_quantity int NOT NULL,
+	tool_type_id int NOT NULL,
+	brand varchar(30) NOT NULL,
+	previous_model int NULL,
+	quantity_rented int NOT NULL DEFAULT 0,
+	CONSTRAINT tool_idPK PRIMARY KEY (tool_id),
+	CONSTRAINT tool_type_idFK FOREIGN KEY (tool_type_id) REFERENCES Tool_Types(tool_type_id)
+		ON UPDATE NO ACTION
+		ON DELETE NO ACTION,
+	CONSTRAINT stock_quantity_check CHECK (stock_quantity >= 0),
+	CONSTRAINT rental_price_check CHECK (rental_price >= 0),
+	CONSTRAINT previous_modelFK FOREIGN KEY (previous_model) REFERENCES Tools(tool_id)
+		ON UPDATE NO ACTION
+		ON DELETE NO ACTION,
+	CONSTRAINT quantity_rented_check CHECK(quantity_rented <= 			stock_quantity AND quantity_rented >= 0)
+);
+
+CREATE TABLE Order_Lines (
+	order_line_id int NOT NULL IDENTITY(1,1),
+	order_id int NOT NULL,
+	tool_id int NOT NULL,
+	quantity_ordered int NOT NULL,
+	row_price DECIMAL(8,2) NOT NULL,
+	CONSTRAINT order_line_idPK PRIMARY KEY (order_line_id),
+	CONSTRAINT order_line_orderFK FOREIGN KEY (order_id) REFERENCES Orders(order_id)
+		ON UPDATE NO ACTION
+		ON DELETE NO ACTION,
+	CONSTRAINT order_line_toolFK FOREIGN KEY (tool_id) REFERENCES Tools(tool_id)
+		ON UPDATE NO ACTION
+		ON DELETE NO ACTION,
+	CONSTRAINT quantity_check CHECK (quantity_ordered >= 0)
+);
+
+CREATE TABLE Screwdrivers (
+	tool_id int NOT NULL,
+	head_shape varchar(20) NOT NULL,
+	CONSTRAINT screwdriver_tool_idPK PRIMARY KEY (tool_id),
+	CONSTRAINT screwdriver_tool_idFK FOREIGN KEY (tool_id) REFERENCES Tools(tool_id)
+		ON UPDATE Cascade
+		ON DELETE Cascade,
+	CONSTRAINT head_shape_check CHECK(head_shape IN ('cross', 'triangle', 'square', 'slotted'))
+);
+
+CREATE TABLE Chainsaws (
+	tool_id int NOT NULL,
+	power_source varchar(20) NOT NULL,
+	guide_bar_length int NOT NULL,
+	chainsaw_weight DECIMAL(3,1) NOT NULL,
+	CONSTRAINT chainsaw_tool_idPK PRIMARY KEY (tool_id),
+	CONSTRAINT chainsaw_tool_idFK FOREIGN KEY (tool_id) REFERENCES Tools(tool_id)
+		ON UPDATE Cascade
+		ON DELETE Cascade,
+	CONSTRAINT power_source_check CHECK(power_source IN ('gas', 'battery', 'electric'))
+);
+
+CREATE TABLE Powerdrills (
+	tool_id int NOT NULL,
+	max_rpm int NOT NULL,
+	cord varchar(3) NOT NULL,
+	CONSTRAINT powerdrill_tool_idPK PRIMARY KEY (tool_id),
+	CONSTRAINT powerdrill_tool_idFK FOREIGN KEY (tool_id) REFERENCES Tools(tool_id)
+		ON UPDATE Cascade
+		ON DELETE Cascade,
+	CONSTRAINT cord_check CHECK (cord IN ('yes', 'no'))
+);
+
+INSERT INTO Tool_Types (tool_type_id, tool_type_name)
+	VALUES (1,'Screwdriver'),
+	       (2, 'Powerdrill'),
+	       (3, 'Chainsaw');
+
+
+USE [tool_rental]
+GO
+DROP TRIGGER IF EXISTS InsertQuantityRented;
+GO
+CREATE TRIGGER InsertQuantityRented
+ON Order_Lines
+AFTER INSERT
+AS
+Begin
+	DECLARE
+        	@QuantityToRent Integer,
+		@ToolID Integer
+
+	SELECT  @QuantityToRent = quantity_ordered FROM INSERTED;
+	SELECT  @ToolID = tool_id FROM INSERTED;
+
+	UPDATE Tools
+	SET Tools.quantity_rented = Tools.quantity_rented + @QuantityToRent
+	WHERE Tools.tool_id = @ToolID;
+
+END;
+GO
+
+USE [tool_rental]
+GO
+DROP TRIGGER IF EXISTS UpdateQuantityRented;
+GO
+CREATE TRIGGER UpdateQuantityRented
+ON Order_Lines
+AFTER UPDATE
+AS
+Begin
+	DECLARE
+		@PreviousAmountRented Integer,
+        	@NewQuantityToRent Integer,
+		@ToolID Integer
+
+	SELECT  @PreviousAmountRented = quantity_ordered FROM DELETED;
+	SELECT  @NewQuantityToRent = quantity_ordered FROM INSERTED;
+	SELECT  @ToolID = tool_id FROM INSERTED;
+
+	UPDATE Tools
+	SET Tools.quantity_rented = Tools.quantity_rented + @NewQuantityToRent - @PreviousAmountRented
+	WHERE Tools.tool_id = @ToolID;
+
+END;
+GO
+
+USE [tool_rental]
+GO
+DROP TRIGGER IF EXISTS DeleteQuantityRented;
+GO
+CREATE TRIGGER DeleteQuantityRented
+ON Order_Lines
+AFTER DELETE
+AS
+Begin
+	DECLARE
+		@ReturnAmountRented Integer,
+		@ToolID Integer
+
+	SELECT  @ReturnAmountRented = quantity_ordered FROM DELETED;
+	SELECT  @ToolID = tool_id FROM DELETED;
+
+	UPDATE Tools
+	SET Tools.quantity_rented = Tools.quantity_rented - @ReturnAmountRented
+	WHERE Tools.tool_id = @ToolID;
+
+END;
+GO
